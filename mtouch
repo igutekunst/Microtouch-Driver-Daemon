@@ -10,21 +10,6 @@ import struct
 import sys
 
 
-	
-	
-def ConfigSectionMap(section):
-	dict1 = {}
-	options = config.options(section)
-	for option in options:
-		try:
-			dict1[option] = Config.get(section,option)
-			if dict1[option] == -1:
-				DebugPrint("skip: %s" %option)
-		except:
-			print ("Exeption on $s" % option)
-			dict1[option]=None
-	return dict1
-
 def parse(a):
 	if len(a) ==4:	
 		(x,y) = struct.unpack("<HH",a)	
@@ -45,10 +30,10 @@ def getClick():
 		sys.exit(2)
 	
 parser = argparse.ArgumentParser("%s" % sys.argv[0])
-parser.add_argument("--serial-port",type=str,action="store",default="/dev/ttyS0",dest="serialPort",help ="Serial port touch screen is attached to")
-parser.add_argument("-raw",action="store_true",help="Raw Data fomratted somewhat nicely")
+parser.add_argument("--serial-port",type=str,action="store",default="/dev/ttyS0",dest="serialPort",help ="Non standard serial port. Default is /dev/ttyS0")
+parser.add_argument("-raw",action="store_true",help="Raw Data.")
 parser.add_argument("-c",action="store_true",help="Callibrate the touch screen")
-parser.add_argument("--filename",type=str,default="/etc/mtouch/callibration.cfg",help="Use non standard configuration filename")
+parser.add_argument("--filename",type=str,default="/etc/mtouch/callibration.cfg",help="Use non standard configuration filename.")
 parser.add_argument("-v",action="store_true",help="Verbose output for debugging")
 def callibrate(s,configFilename):	
 	cfgfile = open(configFilename,'w')
@@ -58,22 +43,26 @@ def callibrate(s,configFilename):
 	print "Touch top Left"
 	s.flushInput()
 	tl = getClick()
-	print tl
+	if verbose:
+	    print tl
 	raw_input("Press Enter to Continue")
-	print "touch Bottom Left"
+	print "Touch Bottom Left"
 	s.flushInput()	
 	bl = getClick()
-	print bl	
+	if verbose:
+	    print bl	
 	raw_input("Press Enter to Continue")
 	print "Touch Bottom Right"	
 	s.flushInput()
 	br = getClick()
-	print br	
+	if verbose:
+	    print br	
 	raw_input("Press Enter to Continue")
 	print "Touch Top Right"
 	s.flushInput()
 	tr = getClick()
-	print tr
+	if verbose:
+	    print tr
 	minX = sum([bl[0][0],tl[0][0]])/2.
 	minY = sum([tl[0][1],tr[0][1]])/2.
 	maxX = sum([tr[0][0],br[0][0]])/2.
@@ -84,10 +73,11 @@ def callibrate(s,configFilename):
 	config.set("callibration","maxX",maxX)
 	config.set("callibration","minY",minY)
 	config.set("callibration","maxY",maxY)
-	print "MinX", minX
-	print "MaxX", maxX
-	print "minY", minY
-	print "maxY",maxY
+	if verbose:
+	    print "MinX", minX
+    	print "MaxX", maxX
+    	print "minY", minY
+    	print "maxY",maxY
 
 	print ("Writing new config file %s" % configFilename )
 	config.write(cfgfile)
@@ -108,7 +98,7 @@ def raw_data(s,configFilename):
 
 
 
-def main(s,configFilename):
+def main(s,configFilename,verbose):
 
 	config = ConfigParser.ConfigParser()
 
@@ -145,12 +135,13 @@ def main(s,configFilename):
 			root.change_attributes(event_mask=X.ButtonPressMask)
 			state ="pressed"
 			Xlib.ext.xtest.fake_input(d,X.ButtonPress,1)
+			print ("Mouse Down at (%d,%d)" %(newX,newY))
 		if state=="pressed" and eventType=="up":
 			root.change_attributes(event_mask=X.ButtonReleaseMask)
 			state ="pressed"
 			state = "waiting"	
 			Xlib.ext.xtest.fake_input(d,X.ButtonRelease,1)
-			#send mouse up
+			print ("Mouse Up at (%d,%d)" %(newX,newY))
 		d.sync()	
 
 
@@ -170,4 +161,4 @@ elif namespace.raw:
 	raw_data(s,configFilename)
 
 else:
-	main(s,configFilename)	
+	main(s,configFilename,verbose)	
