@@ -1,0 +1,173 @@
+#!/usr/bin/python2.7
+from Xlib import X,display
+import ConfigParser
+import Xlib
+import time
+import argparse
+import os
+import serial
+import struct
+import sys
+
+
+	
+	
+def ConfigSectionMap(section):
+	dict1 = {}
+	options = config.options(section)
+	for option in options:
+		try:
+			dict1[option] = Config.get(section,option)
+			if dict1[option] == -1:
+				DebugPrint("skip: %s" %option)
+		except:
+			print ("Exeption on $s" % option)
+			dict1[option]=None
+	return dict1
+
+def parse(a):
+	if len(a) ==4:	
+		(x,y) = struct.unpack("<HH",a)	
+		return (x,y)
+	return False
+def getClick():
+	a = s.read(5)
+	cmd = ord(a[0])
+	
+	if cmd == 0xd8:
+		#print "Down"
+		return (parse(a[1:5]),"down")
+	if cmd == 0x98:
+		#print "Up"
+		return (parse(a[1:5]),"up")
+		d.sync()
+		usage()
+		sys.exit(2)
+	
+parser = argparse.ArgumentParser("%s" % sys.argv[0])
+parser.add_argument("--serial-port",type=str,action="store",default="/dev/ttyS0",dest="serialPort",help ="Serial port touch screen is attached to")
+parser.add_argument("-raw",action="store_true",help="Raw Data fomratted somewhat nicely")
+parser.add_argument("-c",action="store_true",help="Callibrate the touch screen")
+parser.add_argument("--filename",type=str,default="/etc/mtouch/callibration.cfg",help="Use non standard configuration filename")
+parser.add_argument("-v",action="store_true",help="Verbose output for debugging")
+def callibrate(s,configFilename):	
+	cfgfile = open(configFilename,'w')
+	config = ConfigParser.ConfigParser()
+
+	config.read(configFilename)
+	print "Touch top Left"
+	s.flushInput()
+	tl = getClick()
+	print tl
+	raw_input("Press Enter to Continue")
+	print "touch Bottom Left"
+	s.flushInput()	
+	bl = getClick()
+	print bl	
+	raw_input("Press Enter to Continue")
+	print "Touch Bottom Right"	
+	s.flushInput()
+	br = getClick()
+	print br	
+	raw_input("Press Enter to Continue")
+	print "Touch Top Right"
+	s.flushInput()
+	tr = getClick()
+	print tr
+	minX = sum([bl[0][0],tl[0][0]])/2.
+	minY = sum([tl[0][1],tr[0][1]])/2.
+	maxX = sum([tr[0][0],br[0][0]])/2.
+	maxY = sum([bl[0][1],br[0][1]])/2.
+	config.add_section("callibration")
+
+	config.set("callibration","minX",minX)	
+	config.set("callibration","maxX",maxX)
+	config.set("callibration","minY",minY)
+	config.set("callibration","maxY",maxY)
+	print "MinX", minX
+	print "MaxX", maxX
+	print "minY", minY
+	print "maxY",maxY
+
+	print ("Writing new config file %s" % configFilename )
+	config.write(cfgfile)
+	sys.exit(0)
+def raw_data(s,configFilename):	
+	while 1:
+		
+		a = s.read(5)
+		cmd = ord(a[0])
+		x0 = ord(a[1])
+		x1 = ord(a[2])	
+		y0 = ord(a[3])
+		y1 = ord(a[4])
+		sys.stdout.write("%2x %2x %2x %2x %2x" %(cmd,x0,x1,y0,y1 ))
+		print
+		#sys.stdout.write(' ')
+		#a +=c	
+
+
+
+def main(s,configFilename):
+
+	config = ConfigParser.ConfigParser()
+
+	config.read(configFilename)
+	
+	d = display.Display()
+	root = d.screen().root
+	desktop = root.get_geometry()
+	state = "waiting"
+	try:
+		minX = float(config.get("callibration","minX"))
+		maxX = float(config.get("callibration","maxX"))
+		minY = float(config.get("callibration","minY"))
+		maxY = float(config.get("callibration","maxY"))	
+	except ConfigParser.NoSectionError:
+		print ("Confiuration error. Run python %s -c" % sys.argv[0])	
+		sys.exit(1)
+	xRange = maxX -minX
+	yRange = maxY -minY
+
+	while 1:
+		((x,y),eventType) = getClick()	
+		newX = ((x-minX)/xRange) * desktop.width
+		newY = ((y-minY)/yRange) * desktop.height
+		sc = d.screen()
+		root = sc.root
+				
+		root.warp_pointer(newX,newY)
+		
+		if state=="waiting" and eventType=="down":
+			# send mouse down
+			pointer = root.query_pointer()
+			window=pointer.child
+			root.change_attributes(event_mask=X.ButtonPressMask)
+			state ="pressed"
+			Xlib.ext.xtest.fake_input(d,X.ButtonPress,1)
+		if state=="pressed" and eventType=="up":
+			root.change_attributes(event_mask=X.ButtonReleaseMask)
+			state ="pressed"
+			state = "waiting"	
+			Xlib.ext.xtest.fake_input(d,X.ButtonRelease,1)
+			#send mouse up
+		d.sync()	
+
+
+
+namespace = parser.parse_args()
+verbose = namespace.v
+serialPort = namespace.serialPort
+configFilename =namespace.filename 
+try:
+	s = serial.Serial(serialPort)
+except serial.serialutil.SerialException:
+	print ("Could not open serial port %s" % serialPort)
+	sys.exit(1)
+if namespace.c:
+	callibrate(s,configFilename)
+elif namespace.raw:
+	raw_data(s,configFilename)
+
+else:
+	main(s,configFilename)	
